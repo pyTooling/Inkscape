@@ -1,0 +1,136 @@
+name: Build Docker Image
+
+on:
+  push:
+    paths:
+      - '.github/workflows/Pipeline.yml'
+      - '.github/Docker/*/Dockerfile'
+      - '.github/Docker/*/*.packages'
+  pull_request:
+    paths:
+      - '.github/workflows/Pipeline.yml'
+      - '.github/Docker/*/Dockerfile'
+      - '.github/Docker/*/*.packages'
+  schedule:
+      - cron: '0 0 * * 5'
+  workflow_dispatch:
+
+jobs:
+  Inkscape:
+    runs-on: ubuntu-latest
+    name: 🛳️ Build Inkscape image
+
+    steps:
+      - name: ⏬ Repository Checkout
+        uses: actions/checkout@v4
+
+      - name: ⏬ Google Fonts - Teko
+        id: fonts
+        run: |
+          ANSI_BLUE=$'\x1b[34m'
+          ANSI_NOCOLOR=$'\x1b[0m'
+          
+          git clone -n --depth=1 --filter=tree:0 https://github.com/google/fonts.git google-fonts
+          (
+            cd google-fonts
+            for item in teko; do
+              printf "Spare checkout of OFL font '%s' ...\n" "$item"
+              git sparse-checkout set --no-cone /ofl/$item
+            done
+            git checkout
+          )
+          printf "::group::${ANSI_BLUE}Sparsely checked out google fonts:${ANSI_NOCOLOR}\n"
+          tree google-fonts
+          du -sh google-fonts
+          printf "::endgroup::\n"
+
+      - name: 🐋 Build Inkscape image
+        id: build
+        run: |
+          ANSI_RED=$'\x1b[31m'
+          ANSI_GREEN=$'\x1b[32m'
+          ANSI_YELLOW=$'\x1b[33m'
+          ANSI_BLUE=$'\x1b[34m'
+          ANSI_CYAN=$'\x1b[36m'
+          ANSI_DARK_GRAY=$'\x1b[90m'
+          ANSI_NOCOLOR=$'\x1b[0m'
+          
+          base_os_name=Bookworm
+          base_py_version=3.11
+          base_name=debian
+          base_tag=${base_os_name,,}-slim
+          base_image=${base_name}:${base_tag}
+          
+          image_ns=pytooling
+          image_name=inkscape
+          image_tag=latest
+          image=${image_ns}/${image_name}:${image_tag}
+          
+          tee "${GITHUB_OUTPUT}" <<EOF
+          image_ns=${image_ns}
+          image_name=${image_name}
+          image_tag=${image_tag}
+          image=${image}
+          EOF
+          
+          RemoveComments() {
+            local OutputFile="${2:-$1}"
+        
+            printf "  %s\n" "Removing comments from '$1' and writing to '${OutputFile}'."
+            grep -v '^\s*$\|^\s*\#' "$1" > "${OutputFile}"
+        
+            printf "::group::${ANSI_BLUE}List content of '${OutputFile}':${ANSI_NOCOLOR}\n"
+            while IFS='' read -r line; do
+              printf "%s\n" "  ${ANSI_CYAN}$line${ANSI_NOCOLOR}"
+            done < "${OutputFile}"
+            printf "::endgroup::\n"
+          }
+
+          DockerImageSizeUncompressed() {
+            docker image inspect $1 --format='{{.Size}}' | numfmt --to=iec --format '%.2f'
+          }
+
+          printf "Prepare context in './context' ...\n"
+          mkdir -p ./context
+          
+          for item in teko; do
+            printf "  Copy font '%s' ...\n" "$item"
+            cp -R google-fonts/ofl/$item ./context
+          done
+
+          for item in debian python npm; do
+            RemoveComments "$item.packages" "./context/$item.list"
+          done
+          
+          printf "::group::${ANSI_BLUE}Docker build context:${ANSI_NOCOLOR}\n"
+          tree ./context
+          du -sh ./context
+          printf "::endgroup::\n"
+          
+          printf "%s\n" "Building docker file 'Dockerfile' ..."
+          docker buildx build \
+            --file Dockerfile \
+            --build-arg IMAGE=${base_image} \
+            --build-arg OS_VERSION=${base_os_name} \
+            --build-arg PY_VERSION=${base_py_version} \
+            --tag "${image}" \
+            ./context 2>&1 \
+          | ./Docker.buildx.sh
+
+          printf "%s\n" "Docker image '${image}' has $(DockerImageSizeUncompressed ${image})"
+          
+          printf "::group::${ANSI_BLUE}Docker inspect of '${image}':${ANSI_NOCOLOR}\n"
+          docker inspect "${image}"
+          printf "::endgroup::\n"
+
+      - name: 🔑 Login and push '${{ steps.variables.outputs.specific_image }}' to Docker Hub
+        run: |
+          DockerImageSizeUncompressed() {
+            docker image inspect $1 --format='{{.Size}}' | numfmt --to=iec --format '%.2f'
+          }
+          
+          printf "%s\n" "Login at Docker Hub ..."
+          printf "%s\n" "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u ${{ vars.DOCKERHUB_USERNAME }} --password-stdin
+        
+          printf "%s\n" "Docker image '${{ steps.build.outputs.image }}}' has $(DockerImageSizeUncompressed ${{ steps.build.outputs.image }})"
+          docker image push ${{ steps.build.outputs.image }}
