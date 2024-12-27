@@ -24,6 +24,26 @@ jobs:
       - name: ⏬ Repository Checkout
         uses: actions/checkout@v4
 
+      - name: ⏬ Google Fonts - Teko
+        id: fonts
+        run: |
+          ANSI_BLUE=$'\x1b[34m'
+          ANSI_NOCOLOR=$'\x1b[0m'
+          
+          git clone -n --depth=1 --filter=tree:0 https://github.com/google/fonts.git google-fonts
+          (
+            cd google-fonts
+            for item in teko; do
+              printf "Spare checkout of OFL font '%s' ...\n" "$item"
+              git sparse-checkout set --no-cone /ofl/$item
+            done
+            git checkout
+          )
+          printf "::group::${ANSI_BLUE}Sparsely checked out google fonts:${ANSI_NOCOLOR}\n"
+          tree google-fonts
+          du -sh google-fonts
+          printf "::endgroup::\n"
+
       - name: 🐋 Build Inkscape image
         id: build
         run: |
@@ -59,7 +79,7 @@ jobs:
             printf "  %s\n" "Removing comments from '$1' and writing to '${OutputFile}'."
             grep -v '^\s*$\|^\s*\#' "$1" > "${OutputFile}"
         
-            printf "::group::${ANSI_BLUE}  List content of '${OutputFile}':${ANSI_NOCOLOR}\n"
+            printf "::group::${ANSI_BLUE}List content of '${OutputFile}':${ANSI_NOCOLOR}\n"
             while IFS='' read -r line; do
               printf "%s\n" "  ${ANSI_CYAN}$line${ANSI_NOCOLOR}"
             done < "${OutputFile}"
@@ -70,14 +90,22 @@ jobs:
             docker image inspect $1 --format='{{.Size}}' | numfmt --to=iec --format '%.2f'
           }
 
-          printf "Prepare context in '.' ...\n"
+          printf "Prepare context in './context' ...\n"
+          mkdir -p ./context
+          
+          for item in teko; do
+            printf "  Copy font '%s' ...\n" "$item"
+            cp -R google-fonts/ofl/$item ./context
+          done
 
-          printf "%s\n" "Convert 'debian.packages' to './debian.list' ..."
-          RemoveComments debian.packages ./debian.list
-          printf "%s\n" "Convert 'python.packages' to './python.list' ..."
-          RemoveComments python.packages ./python.list
-          printf "%s\n" "Convert 'npm.packages' to './npm.list' ..."
-          RemoveComments npm.packages ./npm.list
+          for item in debian python npm; do
+            RemoveComments "$item.packages" "./context/$item.list"
+          done
+          
+          printf "::group::${ANSI_BLUE}Docker build context:${ANSI_NOCOLOR}\n"
+          tree ./context
+          du -sh ./context
+          printf "::endgroup::\n"
           
           printf "%s\n" "Building docker file 'Dockerfile' ..."
           docker buildx build \
@@ -86,7 +114,7 @@ jobs:
             --build-arg OS_VERSION=${base_os_name} \
             --build-arg PY_VERSION=${base_py_version} \
             --tag "${image}" \
-            . 2>&1 \
+            ./context 2>&1 \
           | ./Docker.buildx.sh
 
           printf "%s\n" "Docker image '${image}' has $(DockerImageSizeUncompressed ${image})"

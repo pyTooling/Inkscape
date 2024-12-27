@@ -2,6 +2,8 @@
 
 This repository is based on [debian:bookworm-slim](https://hub.docker.com/_/debian).
 
+Docker Hub: https://hub.docker.com/r/pytooling/inkscape
+
 ## Usage
 
 

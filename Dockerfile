@@ -28,7 +28,8 @@ RUN --mount=type=bind,target=/context \
 RUN --mount=type=bind,target=/context \
     xargs --no-run-if-empty -a /context/npm.list -- npm -g install
 
-RUN mkdir -p /usr/local/share/fonts/Teko \
- && curl -fsSL https://github.com/google/fonts/archive/refs/heads/main.tar.gz | tar xvzf - -C /usr/local/share/fonts --strip-components=3 --wildcards 'fonts-main/ofl/teko/*.ttf' \
+# Install Google Fonts
+RUN --mount=type=bind,target=/context \
+    cp /context/teko/*.ttf /usr/local/share/fonts \
  && fc-cache -fv \
  && fc-match Teko
