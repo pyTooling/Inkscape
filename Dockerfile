@@ -10,6 +10,8 @@ ARG PY_VERSION
 LABEL maintainer="Patrick Lehmann <Paebbels@gmail.com>"
 LABEL version="0.2"
 LABEL description="Inkscape based on Debian ${OS_VERSION} (slim) with Python ${PY_VERSION}."
+LABEL org.opencontainers.image.vendor="pyTooling"
+LABEL org.opencontainers.image.source="https://github.com/pyTooling/Inkscape.git"
 
 # Install Debian packages
 RUN --mount=type=bind,target=/context \
@@ -20,7 +22,7 @@ RUN --mount=type=bind,target=/context \
 
 # Install Python packages
 RUN --mount=type=bind,target=/context \
-    xargs --no-run-if-empty -a /context/python.list -- pip3 install
+    xargs --no-run-if-empty -a /context/python.list -- pip3 install -U --disable-pip-version-check --break-system-packages
 
 # Install NPM packages
 RUN --mount=type=bind,target=/context \

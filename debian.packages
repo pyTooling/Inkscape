@@ -1,5 +1,7 @@
 curl
 inkscape
 npm
+python3
+python3-pip
 xauth
 xvfb
