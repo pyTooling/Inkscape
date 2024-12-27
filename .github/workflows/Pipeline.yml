@@ -125,6 +125,10 @@ jobs:
 
       - name: 🔑 Login and push '${{ steps.variables.outputs.specific_image }}' to Docker Hub
         run: |
+          DockerImageSizeUncompressed() {
+            docker image inspect $1 --format='{{.Size}}' | numfmt --to=iec --format '%.2f'
+          }
+          
           printf "%s\n" "Login at Docker Hub ..."
           printf "%s\n" "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u ${{ vars.DOCKERHUB_USERNAME }} --password-stdin
         
